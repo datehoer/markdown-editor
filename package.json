@@ -7,9 +7,15 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^13.5.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "codemirror": "^5.65.18",
+    "html2canvas": "^1.4.1",
+    "react": "^18.0.0",
+    "react-codemirror2": "^8.0.1",
+    "react-dom": "^18.0.0",
+    "react-markdown": "^10.1.0",
     "react-scripts": "5.0.1",
+    "react-syntax-highlighter": "^15.6.1",
+    "remark-gfm": "^4.0.1",
     "web-vitals": "^2.1.4"
   },
   "scripts": {

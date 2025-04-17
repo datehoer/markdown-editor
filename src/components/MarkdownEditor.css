@@ -118,7 +118,9 @@ body {
   display: flex;
   gap: 12px;
 }
-
+.icon-button.active {
+  background-color: var(--button-hover);
+}
 .icon-button {
   background: var(--button-bg);
   border: none;
@@ -267,7 +269,6 @@ body {
 .preview-content code {
   font-family: var(--font-mono);
   background-color: var(--code-bg);
-  padding: 0.2em 0.4em;
   border-radius: 3px;
   font-size: 85%;
 }
@@ -453,6 +454,72 @@ body {
   background-color: #0062C3;
 }
 
+.preview-container {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    height: 200px;
+    overflow: hidden;
+    background-color: var(--preview-bg);
+}
+
+.preview-scaled {
+    transform: scale(0.5);
+    width: 200%;
+    height: 200%;
+    padding: 32px;
+    overflow: hidden;
+}
+  
+.preview-scaled h1 {
+    font-size: 2em;
+    margin-top: 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.3em;
+}
+  
+.preview-scaled p, 
+.preview-scaled ul,
+.preview-scaled ol,
+.preview-scaled blockquote,
+.preview-scaled pre {
+    margin-bottom: 16px;
+}
+  
+.preview-scaled code {
+    font-family: var(--font-mono);
+    background-color: var(--code-bg);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 85%;
+}
+  
+.preview-scaled pre {
+    border-radius: 6px;
+    overflow: auto;
+}
+  
+.preview-scaled blockquote {
+    padding: 0 1em;
+    color: var(--text-secondary);
+    border-left: 4px solid var(--blockquote-border);
+    background-color: var(--blockquote-bg);
+    border-radius: 0 3px 3px 0;
+}
+  
+.preview-scaled img {
+    max-width: 100%;
+    border-radius: 6px;
+}
+.icon-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+  
+.icon-button:disabled:hover {
+    background-color: var(--button-bg);
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .content-container {
@@ -500,5 +567,56 @@ body {
   .export-modal {
     width: 95%;
     padding: 16px;
+  }
+}
+.file-sidebar-container {
+  height: 100%;
+  transition: width 0.3s ease, opacity 0.3s ease;
+  overflow: hidden;
+}
+
+.file-sidebar-container.open {
+  width: 250px;
+  opacity: 1;
+}
+
+.file-sidebar-container.closed {
+  width: 0;
+  opacity: 0;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  transition: width 0.3s ease;
+}
+
+.main-content.with-sidebar {
+  width: calc(100% - 250px);
+}
+
+.main-content.full-width {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .file-sidebar-container.open {
+    width: 100%;
+    position: absolute;
+    z-index: 10;
+    background-color: var(--app-bg);
+    height: calc(100% - 56px); /* 减去header高度 */
+    top: 56px;
+  }
+  
+  .main-content.with-sidebar {
+    width: 100%;
+    opacity: 0.3; /* 当侧边栏打开时，降低主内容区域的透明度 */
+    pointer-events: none; /* 禁用主内容区域的点击 */
+  }
+  
+  .main-content.full-width {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
