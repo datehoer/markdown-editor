@@ -1,7 +1,7 @@
 # Markdown Editor
 
 一个功能丰富的Markdown编辑器，支持本地文件和WebDAV存储，提供实时预览和各种Markdown格式工具。
-
+image.png
 ![Markdown Editor Screenshot](screenshot.png)
 
 ## 特点
