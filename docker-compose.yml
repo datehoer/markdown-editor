@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  # 开发环境服务
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: markdown-editor-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    restart: unless-stopped
+
+  # 生产环境服务
+  prod:
+    image: markdown-editor:latest
+    container_name: markdown-editor-prod
+    ports:
+      - "8080:80"
+    restart: unless-stopped 

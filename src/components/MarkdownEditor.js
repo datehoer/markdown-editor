@@ -27,11 +27,41 @@ const MarkdownEditor = () => {
   const [currentFilePath, setCurrentFilePath] = useState(null);
   const [currentFileHandle, setCurrentFileHandle] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isWebdavFile, setIsWebdavFile] = useState(false);
   
   const previewRef = useRef(null);
   const editorRef = useRef(null);
   const saveCurrentFile = useCallback(async () => {
-    if (currentFileHandle) {
+    if (isWebdavFile && currentFileHandle) {
+      try {
+        // 对于WebDAV文件，我们将保存操作委托给FileSidebar组件
+        // 此处通过隐藏的DOM事件通信，或者可以直接在FileSidebar中使用ref调用
+        const fileNameToSave = `${title}.md`;
+        const fileSidebarRef = document.querySelector('.file-sidebar');
+        
+        // 如果存在ref，直接调用其saveCurrentFile方法
+        if (fileSidebarRef && fileSidebarRef.__reactProps$) {
+          const result = await fileSidebarRef.__reactProps$.saveMarkdown({
+            content: markdown,
+            path: currentFilePath,
+            fileName: fileNameToSave
+          });
+          
+          if (result && result.success) {
+            setIsSaved(true);
+            return { success: true };
+          } else {
+            throw new Error(result.error || '保存WebDAV文件失败');
+          }
+        } else {
+          // 回退到FileSidebar组件通过props提供的saveMarkdown方法
+          return { success: false, error: 'WebDAV保存接口不可用' };
+        }
+      } catch (err) {
+        console.error('保存WebDAV文件失败:', err);
+        return { success: false, error: err.message };
+      }
+    } else if (currentFileHandle && !isWebdavFile) {
       try {
         const writable = await currentFileHandle.createWritable();
         await writable.write(markdown);
@@ -46,7 +76,7 @@ const MarkdownEditor = () => {
       alert('请先从侧边栏选择保存位置或打开文件');
       return { success: false, error: '无文件句柄' };
     }
-  }, [currentFileHandle, markdown]);
+  }, [currentFileHandle, markdown, isWebdavFile, title, currentFilePath]);
   // Auto-save effect
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -81,6 +111,35 @@ const MarkdownEditor = () => {
       setIsUndoRedo(false);
     }
   }, [markdown, history, historyIndex, isUndoRedo]);
+  // 添加侧边栏宽度监听
+  useEffect(() => {
+    // 设置初始CSS变量
+    document.documentElement.style.setProperty('--sidebar-width', '250px');
+    
+    // 使用ResizeObserver监听宽度变化
+    const resizeObserver = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        if (entry.target.classList.contains('file-sidebar')) {
+          const width = entry.contentRect.width;
+          document.documentElement.style.setProperty('--sidebar-width', `${width}px`);
+        }
+      }
+    });
+    
+    // 延迟观察，确保组件已经挂载
+    const timer = setTimeout(() => {
+      const sidebarElement = document.querySelector('.file-sidebar');
+      if (sidebarElement) {
+        resizeObserver.observe(sidebarElement);
+      }
+    }, 100);
+    
+    return () => {
+      clearTimeout(timer);
+      resizeObserver.disconnect();
+    };
+  }, []);
+  
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
@@ -92,6 +151,7 @@ const MarkdownEditor = () => {
       setTitle(fileData.name.replace(/\.md$/, ''));
       setCurrentFilePath(fileData.path);
       setCurrentFileHandle(fileData.handle);
+      setIsWebdavFile(fileData.isWebdav || false);
       setIsSaved(true);
       
       // 为移动设备关闭侧边栏

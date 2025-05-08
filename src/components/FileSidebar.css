@@ -1,4 +1,5 @@
 .file-sidebar {
+    min-width: 180px;
     width: 250px;
     height: 100%;
     background-color: var(--editor-bg);
@@ -7,6 +8,28 @@
     flex-direction: column;
     transition: background-color var(--transition-speed) ease;
     overflow: hidden;
+    position: relative;
+  }
+  
+  .file-sidebar[data-compact="true"] {
+    min-width: 180px;
+  }
+  
+  .resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    width: 8px;
+    height: 100%;
+    background-color: transparent;
+    cursor: ew-resize;
+    z-index: 10;
+  }
+  
+  .resize-handle:hover, 
+  .resize-handle:active {
+    background-color: var(--accent-color);
+    opacity: 0.3;
   }
   
   .sidebar-header {
@@ -62,10 +85,13 @@
   .file-list {
     display: flex;
     flex-direction: column;
+    width: 100%;
+    min-width: 100%;
   }
   
   .file-list-item {
     width: 100%;
+    min-width: fit-content;
     transition: background-color 0.15s ease;
   }
   
@@ -85,6 +111,8 @@
     font-size: 14px;
     cursor: pointer;
     width: 100%;
+    min-width: fit-content;
+    white-space: nowrap;
   }
   
   .folder-icon, .file-icon {
@@ -121,13 +149,68 @@
     font-size: 14px;
   }
   
+  /* WebDAV表单样式 */
+  .webdav-form {
+    padding: 16px;
+  }
+  
+  .webdav-form h4 {
+    margin: 0 0 16px 0;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  
+  .form-group {
+    margin-bottom: 12px;
+  }
+  
+  .form-group label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  
+  .form-group input {
+    width: 100%;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background-color: var(--editor-bg);
+    color: var(--text-primary);
+    font-size: 14px;
+  }
+  
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  
+  .primary-button {
+    background-color: var(--accent-color);
+    color: white;
+  }
+  
+  .primary-button:hover {
+    background-color: #0062C3;
+  }
+  
+  .secondary-button {
+    background-color: var(--button-bg);
+  }
+  
+  .storage-type {
+    font-size: 12px;
+    color: var(--accent-color);
+    margin-top: 4px;
+  }
+  
   /* 响应式调整 */
   @media (max-width: 768px) {
     .file-sidebar {
-      width: 100%;
-      height: auto;
-      border-right: none;
-      border-bottom: 1px solid var(--border-color);
+      width: 180px;
     }
     
     .sidebar-header {
@@ -143,5 +226,544 @@
     .sidebar-actions {
       flex-direction: row;
     }
+    
+    /* 移动设备上的其他必要调整 */
+    .action-toolbar {
+      flex-wrap: wrap;
+    }
+  }
+
+  .button-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
   }
   
+  .button-row .sidebar-button {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  /* 文件夹项添加hover状态下显示操作按钮 */
+  .directory-item {
+    position: relative;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .folder-actions {
+    position: absolute;
+    right: 8px;
+    display: none;
+    gap: 4px;
+  }
+
+  .directory-item:hover .folder-actions {
+    display: flex;
+  }
+
+  .folder-action-btn {
+    background: transparent;
+    border: none;
+    font-size: 12px;
+    padding: 2px 4px;
+    cursor: pointer;
+    opacity: 0.7;
+    border-radius: 3px;
+  }
+
+  .folder-action-btn:hover {
+    background-color: var(--button-hover);
+    opacity: 1;
+  }
+
+  .folder-active {
+    background-color: var(--button-bg);
+  }
+
+  /* 文件夹上下文菜单 */
+  .folder-context-menu {
+    background-color: var(--modal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: var(--shadow-light);
+    overflow: hidden;
+    z-index: 1000;
+    min-width: 180px;
+  }
+
+  .context-menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .context-menu-item:hover {
+    background-color: var(--button-bg);
+  }
+
+  /* 新增UI组件样式 */
+  .sidebar-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 8px;
+    width: 100%;
+  }
+
+  /* 操作工具栏 */
+  .action-toolbar {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  /* 在紧凑模式下也确保工具栏不换行 */
+  .file-sidebar[data-compact="true"] .action-toolbar {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+  
+  /* 为每个按钮设置合适的大小 */
+  .action-toolbar .action-button {
+    flex: 0 0 auto;
+    min-width: 36px;
+  }
+
+  /* 确保在紧凑模式下四个按钮也能显示完整 */
+  .file-sidebar[data-compact="true"] .action-button {
+    flex: 0 0 auto;
+    min-width: 36px;
+  }
+
+  .action-button {
+    font-size: 12px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: none;
+    background-color: var(--button-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    white-space: nowrap;
+    min-width: 32px;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+  }
+
+  /* 在非紧凑模式下也确保按钮图标总是可见 */
+  .action-button span {
+    transition: opacity 0.2s ease, visibility 0.2s ease, width 0.2s ease;
+    display: inline-block;
+  }
+
+  .action-button:hover {
+    background-color: var(--button-hover);
+  }
+  
+  /* 当侧边栏较窄时隐藏按钮文本 */
+  .file-sidebar[data-compact="true"] .action-button span {
+    width: 0;
+    opacity: 0;
+    visibility: hidden;
+    font-size: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  .file-sidebar[data-compact="true"] .action-button {
+    width: 32px;
+    min-width: 32px;
+    padding: 6px 4px;
+    margin-right: 2px;
+  }
+
+  /* 存储类型选择器 */
+  .storage-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    width: 100%;
+  }
+
+  .storage-option {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 12px;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--button-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  /* 确保存储按钮文本始终显示 */
+  .file-sidebar[data-compact="true"] .storage-option span {
+    display: inline-block;
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+  }
+
+  .storage-option.active {
+    background-color: var(--accent-color);
+    color: white;
+  }
+
+  .storage-option.active.disconnect {
+    background-color: rgba(255, 59, 48, 0.8);
+    color: white;
+  }
+
+  /* 文件浏览区域 */
+  .file-browser-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    width: 100%;
+    min-height: 0;
+    height: 100%;
+  }
+
+  .path-navigation {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--button-bg);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .nav-button {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .nav-button:hover {
+    background-color: var(--button-hover);
+  }
+
+  .nav-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* 面包屑导航 */
+  .path-breadcrumbs {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    font-size: 13px;
+    flex: 1;
+    margin-left: 4px;
+    min-width: 0;
+  }
+
+  .breadcrumb-item {
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    min-width: 0;
+  }
+
+  .breadcrumb-item:hover {
+    color: var(--accent-color);
+  }
+
+  .breadcrumb-item.active {
+    font-weight: 500;
+    color: var(--accent-color);
+  }
+
+  .breadcrumb-separator {
+    margin: 0 4px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  /* 文件列表容器 */
+  .file-items-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+    height: 100%;
+  }
+
+  /* 网格布局文件列表 */
+  .file-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 16px;
+  }
+
+  /* 文件/文件夹卡片 */
+  .file-item-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+
+  .file-item-card:hover {
+    background-color: var(--button-bg);
+  }
+
+  .file-item-card.active {
+    background-color: var(--button-hover);
+  }
+
+  .file-item-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+
+  .file-item-name {
+    font-size: 13px;
+    text-align: center;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 右键菜单 */
+  .file-context-menu {
+    background-color: var(--modal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: var(--shadow-light);
+    z-index: 1000;
+    min-width: 160px;
+  }
+
+  /* 连接提示 */
+  .connect-prompt {
+    padding: 24px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-align: center;
+  }
+
+  /* 加载中动画 */
+  .loading {
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .loading-spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid rgba(0, 113, 227, 0.2);
+    border-radius: 50%;
+    border-top-color: var(--accent-color);
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* 调试信息样式 */
+  .debug-info {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    opacity: 0.7;
+  }
+
+  .form-group label.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .form-group label.checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  /* WebDAV历史连接相关样式 */
+  .webdav-history {
+    padding: 16px;
+  }
+
+  .webdav-history h4 {
+    margin: 0 0 16px 0;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .empty-history {
+    padding: 20px 0;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    border-radius: 6px;
+    background-color: var(--button-bg);
+    transition: background-color 0.2s;
+    cursor: pointer;
+  }
+
+  .history-item:hover {
+    background-color: var(--button-hover);
+  }
+
+  .history-item-content {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .history-item-label {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .history-item-url {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .history-delete-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    opacity: 0.6;
+    transition: all 0.2s;
+  }
+
+  .history-delete-btn:hover {
+    background-color: rgba(255, 0, 0, 0.1);
+    color: #e53935;
+    opacity: 1;
+  }
+
+  .form-actions-triple {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .form-actions-triple .sidebar-button {
+    flex: 1;
+  }
+
+  /* 滚动条样式优化 */
+  .file-items-container::-webkit-scrollbar,
+  .path-navigation::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+
+  .file-items-container::-webkit-scrollbar-thumb,
+  .path-navigation::-webkit-scrollbar-thumb {
+    background-color: rgba(127, 127, 127, 0.5);
+    border-radius: 3px;
+  }
+
+  .file-items-container::-webkit-scrollbar-track,
+  .path-navigation::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  /* 确保前三个按钮有足够空间不被挤压 */
+  .action-group button:nth-child(1),
+  .action-group button:nth-child(2),
+  .action-group button:nth-child(3) {
+    flex-shrink: 0 !important;
+    min-width: 36px !important;
+    width: 36px !important;
+    padding: 6px 4px !important;
+  }

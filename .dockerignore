@@ -1,0 +1,51 @@
+# Git文件
+.git
+.gitignore
+
+# 依赖目录
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# 构建输出
+build
+dist
+
+# 开发环境文件
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 编辑器配置
+.idea
+.vscode
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 测试相关
+coverage
+__tests__
+*.test.js
+*.spec.js
+
+# Docker相关，避免递归复制
+Dockerfile
+Dockerfile.dev
+docker-compose.yml
+.dockerignore
+
+# Kubernetes配置
+k8s
+
+# 其他文件
+README.md
+LICENSE
+*.md
+!README.md
+*.log 
