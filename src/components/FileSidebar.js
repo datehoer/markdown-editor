@@ -83,7 +83,7 @@ const FileSidebar = ({
   // 侧边栏宽度相关状态
   const sidebarRef = useRef(null);
   const [sidebarWidth, setSidebarWidth] = useState(250);
-  const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
   
   const [storageType, setStorageType] = useState('local'); // local 或 webdav
   const [showWebdavForm, setShowWebdavForm] = useState(false);
@@ -110,9 +110,6 @@ const FileSidebar = ({
   // 添加本地目录句柄缓存，用于导航
   const [directoryHandleCache, setDirectoryHandleCache] = useState({});
 
-  // 处理侧边栏拖动调整宽度
-  const isDraggingRef = useRef(false);
-  
   const handleMouseMove = useCallback((e) => {
     if (isDraggingRef.current && sidebarRef.current) {
       // 计算新宽度 - 使用pageX而不是clientX，以获得更准确的位置
@@ -132,16 +129,14 @@ const FileSidebar = ({
 
   const handleMouseUp = useCallback(() => {
     isDraggingRef.current = false;
-    setIsDragging(false);
     
     // 触发一个resize事件，通知其他组件侧边栏大小已更改
     window.dispatchEvent(new Event('resize'));
-  }, [setIsDragging]);
+  }, []);
 
   const handleMouseDown = (e) => {
     e.preventDefault();
     isDraggingRef.current = true;
-    setIsDragging(true);
   };
 
   // 设置和清理事件监听器
