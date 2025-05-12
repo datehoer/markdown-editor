@@ -83,7 +83,7 @@ const FileSidebar = ({
   // 侧边栏宽度相关状态
   const sidebarRef = useRef(null);
   const [sidebarWidth, setSidebarWidth] = useState(250);
-  const [setIsDragging] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   
   const [storageType, setStorageType] = useState('local'); // local 或 webdav
   const [showWebdavForm, setShowWebdavForm] = useState(false);
@@ -136,7 +136,7 @@ const FileSidebar = ({
     
     // 触发一个resize事件，通知其他组件侧边栏大小已更改
     window.dispatchEvent(new Event('resize'));
-  }, []);
+  }, [setIsDragging]);
 
   const handleMouseDown = (e) => {
     e.preventDefault();
