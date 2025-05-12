@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write  # Grants write access to repository contents
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
