@@ -83,7 +83,7 @@ const FileSidebar = ({
   // 侧边栏宽度相关状态
   const sidebarRef = useRef(null);
   const [sidebarWidth, setSidebarWidth] = useState(250);
-  const [isDragging, setIsDragging] = useState(false);
+  const [setIsDragging] = useState(false);
   
   const [storageType, setStorageType] = useState('local'); // local 或 webdav
   const [showWebdavForm, setShowWebdavForm] = useState(false);
