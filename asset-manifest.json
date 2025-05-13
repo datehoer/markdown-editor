@@ -1,13 +1,17 @@
 {
   "files": {
-    "main.css": "/markdown-editor/static/css/main.26b9799b.css",
-    "main.js": "/markdown-editor/static/js/main.d2c5ea18.js",
+    "main.css": "/markdown-editor/static/css/main.d2e13848.css",
+    "main.js": "/markdown-editor/static/js/main.1f0e352c.js",
+    "static/js/977.7121bfbb.chunk.js": "/markdown-editor/static/js/977.7121bfbb.chunk.js",
+    "static/js/455.f9cfd1dc.chunk.js": "/markdown-editor/static/js/455.f9cfd1dc.chunk.js",
     "index.html": "/markdown-editor/index.html",
-    "main.26b9799b.css.map": "/markdown-editor/static/css/main.26b9799b.css.map",
-    "main.d2c5ea18.js.map": "/markdown-editor/static/js/main.d2c5ea18.js.map"
+    "main.d2e13848.css.map": "/markdown-editor/static/css/main.d2e13848.css.map",
+    "main.1f0e352c.js.map": "/markdown-editor/static/js/main.1f0e352c.js.map",
+    "977.7121bfbb.chunk.js.map": "/markdown-editor/static/js/977.7121bfbb.chunk.js.map",
+    "455.f9cfd1dc.chunk.js.map": "/markdown-editor/static/js/455.f9cfd1dc.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.26b9799b.css",
-    "static/js/main.d2c5ea18.js"
+    "static/css/main.d2e13848.css",
+    "static/js/main.1f0e352c.js"
   ]
 }
