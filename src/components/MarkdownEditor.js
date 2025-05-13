@@ -4,6 +4,7 @@ import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { coldarkDark as SyntaxHighlighterStyle  } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
 import html2canvas from 'html2canvas';
+import html2pdf from 'html2pdf.js';
 import FileSidebar from './FileSidebar';
 
 import './MarkdownEditor.css';
@@ -18,6 +19,9 @@ const MarkdownEditor = () => {
     format: 'png',
     quality: 0.9,
     scale: 2,
+    orientation: 'portrait',
+    unit: 'mm',
+    pageSize: 'a4',
   });
   
   // History states for undo/redo
@@ -333,6 +337,38 @@ const MarkdownEditor = () => {
     }
   };
   
+  // Export preview as PDF
+  const exportAsPDF = async () => {
+    if (!previewRef.current) return;
+    
+    try {
+      const element = previewRef.current.cloneNode(true);
+      
+      // Apply styles for PDF export
+      element.style.padding = '20px';
+      element.style.backgroundColor = isDarkMode ? '#1E1E1E' : '#FFFFFF';
+      element.style.color = isDarkMode ? '#FFFFFF' : '#000000';
+      
+      const opt = {
+        margin: 10,
+        filename: `${title}.pdf`,
+        image: { type: 'jpeg', quality: exportSettings.quality },
+        html2canvas: { scale: exportSettings.scale, useCORS: true },
+        jsPDF: { 
+          unit: exportSettings.unit, 
+          format: exportSettings.pageSize, 
+          orientation: exportSettings.orientation 
+        }
+      };
+      
+      html2pdf().set(opt).from(element).save();
+      setShowExportModal(false);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
+  
   // Copy to clipboard
   const copyToClipboard = async () => {
     if (!previewRef.current) return;
@@ -433,7 +469,7 @@ const MarkdownEditor = () => {
           <button 
             className="icon-button" 
             onClick={() => setShowExportModal(true)}
-            title="Export as Image"
+            title="导出为图片/PDF"
           >
             📷
           </button>
@@ -524,7 +560,7 @@ const MarkdownEditor = () => {
       {showExportModal && (
         <div className="modal-overlay">
           <div className="export-modal">
-            <h2>Export as Image</h2>
+            <h2>Export Document</h2>
             
             <div className="export-settings">
               <div className="setting-group">
@@ -535,6 +571,7 @@ const MarkdownEditor = () => {
                 >
                   <option value="png">PNG</option>
                   <option value="jpeg">JPEG</option>
+                  <option value="pdf">PDF</option>
                 </select>
               </div>
               
@@ -563,6 +600,34 @@ const MarkdownEditor = () => {
                 />
                  <span>{exportSettings.scale}x</span>
               </div>
+              
+              {exportSettings.format === 'pdf' && (
+                <div className="format-specific-settings">
+                  <h3>PDF 设置</h3>
+                  <div className="setting-group">
+                    <label>方向:</label>
+                    <select 
+                      value={exportSettings.orientation}
+                      onChange={(e) => setExportSettings({...exportSettings, orientation: e.target.value})}
+                    >
+                      <option value="portrait">纵向</option>
+                      <option value="landscape">横向</option>
+                    </select>
+                  </div>
+                  
+                  <div className="setting-group">
+                    <label>纸张大小:</label>
+                    <select 
+                      value={exportSettings.pageSize}
+                      onChange={(e) => setExportSettings({...exportSettings, pageSize: e.target.value})}
+                    >
+                      <option value="a4">A4</option>
+                      <option value="letter">Letter</option>
+                      <option value="legal">Legal</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div className="export-preview">
@@ -598,9 +663,14 @@ const MarkdownEditor = () => {
             </div>
             
             <div className="modal-actions">
-              <button onClick={() => setShowExportModal(false)}>Cancel</button>
-              <button onClick={copyToClipboard}>Copy to Clipboard</button>
-              <button className="primary-button" onClick={exportAsImage}>Download</button>
+              <button onClick={() => setShowExportModal(false)}>取消</button>
+              <button onClick={copyToClipboard}>复制到剪贴板</button>
+              <button 
+                className="primary-button" 
+                onClick={exportSettings.format === 'pdf' ? exportAsPDF : exportAsImage}
+              >
+                下载 {exportSettings.format.toUpperCase()}
+              </button>
             </div>
           </div>
         </div>

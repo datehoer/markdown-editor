@@ -333,13 +333,16 @@ body {
 }
 
 .export-modal {
+  max-width: 600px;
+  max-height: 80vh;
+  width: 90%;
   background-color: var(--modal-bg);
   border-radius: 12px;
-  width: 90%;
-  max-width: 600px;
-  padding: 24px;
   box-shadow: var(--shadow-medium);
-  animation: modal-appear 0.2s ease-out;
+  padding: 24px;
+  overflow-y: auto;
+  animation: modal-appear 0.3s ease;
+  position: relative;
 }
 
 @keyframes modal-appear {
@@ -449,10 +452,11 @@ body {
 .modal-actions .primary-button {
   background-color: var(--accent-color);
   color: white;
+  font-weight: 500;
 }
 
 .modal-actions .primary-button:hover {
-  background-color: #0062C3;
+  background-color: #005BBF;
 }
 
 .preview-container {
@@ -623,4 +627,26 @@ body {
     opacity: 1;
     pointer-events: auto;
   }
+}
+
+/* PDF Export Styles */
+.setting-group select[value="pdf"] {
+  font-weight: 500;
+}
+
+.setting-group select option {
+  padding: 8px;
+}
+
+/* Format-specific settings container */
+.format-specific-settings {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.format-specific-settings h3 {
+  font-size: 14px;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
 }
