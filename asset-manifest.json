@@ -1,17 +1,13 @@
 {
   "files": {
-    "main.css": "/markdown-editor/static/css/main.d2e13848.css",
-    "main.js": "/markdown-editor/static/js/main.1f0e352c.js",
-    "static/js/977.7121bfbb.chunk.js": "/markdown-editor/static/js/977.7121bfbb.chunk.js",
-    "static/js/455.f9cfd1dc.chunk.js": "/markdown-editor/static/js/455.f9cfd1dc.chunk.js",
-    "index.html": "/markdown-editor/index.html",
-    "main.d2e13848.css.map": "/markdown-editor/static/css/main.d2e13848.css.map",
-    "main.1f0e352c.js.map": "/markdown-editor/static/js/main.1f0e352c.js.map",
-    "977.7121bfbb.chunk.js.map": "/markdown-editor/static/js/977.7121bfbb.chunk.js.map",
-    "455.f9cfd1dc.chunk.js.map": "/markdown-editor/static/js/455.f9cfd1dc.chunk.js.map"
+    "main.css": "/markdown-editor/static/css/main.ae5c3de6.css",
+    "main.js": "/markdown-editor/static/js/main.b2f09af7.js",
+    "static/js/82.df9b1c79.chunk.js": "/markdown-editor/static/js/82.df9b1c79.chunk.js",
+    "static/js/239.0f5e0b0b.chunk.js": "/markdown-editor/static/js/239.0f5e0b0b.chunk.js",
+    "index.html": "/markdown-editor/index.html"
   },
   "entrypoints": [
-    "static/css/main.d2e13848.css",
-    "static/js/main.1f0e352c.js"
+    "static/css/main.ae5c3de6.css",
+    "static/js/main.b2f09af7.js"
   ]
 }
