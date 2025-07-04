@@ -42,7 +42,7 @@ const PathBreadcrumbs = ({ path, storageType, onNavigate }) => {
 };
 
 // 文件操作菜单组件
-const FileItemMenu = ({ item, position, onRename, onDelete }) => {
+const FileItemMenu = ({ item, position, onRename, onDelete, onDownload, storageType }) => {
   return (
     <div 
       className="file-context-menu"
@@ -58,6 +58,14 @@ const FileItemMenu = ({ item, position, onRename, onDelete }) => {
       >
         <span>✏️ 重命名</span>
       </div>
+      {storageType === 'webdav' && item.type === 'file' && (
+        <div 
+          className="context-menu-item"
+          onClick={() => onDownload(item)}
+        >
+          <span>⬇️ 下载到本地</span>
+        </div>
+      )}
       <div 
         className="context-menu-item"
         onClick={() => onDelete(item)}
@@ -109,6 +117,12 @@ const FileSidebar = ({
 
   // 添加本地目录句柄缓存，用于导航
   const [directoryHandleCache, setDirectoryHandleCache] = useState({});
+
+  // 支持的文件扩展名检查函数
+  const isSupportedFileExtension = (filename) => {
+    const supportedExtensions = ['.md', '.txt', '.json', '.xml', '.yaml', '.yml'];
+    return supportedExtensions.some(ext => filename.endsWith(ext));
+  };
 
   const handleMouseMove = useCallback((e) => {
     if (isDraggingRef.current && sidebarRef.current) {
@@ -348,7 +362,23 @@ const FileSidebar = ({
         // 刷新当前目录
         await loadWebdavContents(webdavClient, currentPath);
       } else {
-        setError('本地文件系统暂不支持删除');
+        // 本地文件系统删除
+        if (item.type === 'directory') {
+          await item.handle.remove({ recursive: true });
+        } else {
+          await item.handle.remove();
+        }
+        
+        // 从缓存中移除已删除的目录句柄
+        if (item.type === 'directory') {
+          const updatedCache = { ...directoryHandleCache };
+          delete updatedCache[item.path];
+          setDirectoryHandleCache(updatedCache);
+        }
+        
+        // 刷新当前目录
+        const currentDirHandle = directoryHandleCache[currentPath] || directoryHandle;
+        await loadDirectoryContents(currentDirHandle);
       }
     } catch (err) {
       console.error('删除失败:', err);
@@ -547,7 +577,7 @@ const FileSidebar = ({
               },
               children: []
             };
-          } else if (item.type === 'file' && item.filename.endsWith('.md')) {
+          } else if (item.type === 'file' && isSupportedFileExtension(item.filename)) {
             return {
               name,
               path: itemPath,
@@ -591,7 +621,7 @@ const FileSidebar = ({
         const fullPath = `/${entryPath}`;
         
         if (entry.kind === 'file') {
-          if (entry.name.endsWith('.md')) {
+          if (isSupportedFileExtension(entry.name)) {
             fileEntries.push({
               name: entry.name,
               path: fullPath,
@@ -1024,6 +1054,126 @@ const FileSidebar = ({
     }
   };
 
+  // 上传本地文件到WebDAV
+  const uploadLocalFile = async () => {
+    if (storageType !== 'webdav' || !webdavClient) {
+      setError('请先连接WebDAV服务器');
+      return;
+    }
+
+    try {
+      // 使用文件选择器选择本地文件
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.accept = '.md,.txt,.json,.csv,.html,.css,.js,.ts,.jsx,.tsx,.py,.java,.cpp,.c,.h,.php,.xml,.yaml,.yml';
+      
+      input.onchange = async (e) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        
+        setIsLoading(true);
+        setError(null);
+        
+        try {
+          const targetPath = currentPath;
+          
+          // 检查目标路径是否存在
+          const pathExists = await webdavClient.exists(targetPath);
+          if (!pathExists && webdavConfig.autoCreateDirectory) {
+            await createDirectoryRecursive(targetPath);
+          } else if (!pathExists) {
+            throw new Error(`目标路径不存在: ${targetPath}`);
+          }
+          
+          // 上传所有选中的文件
+          const uploadPromises = Array.from(files).map(async (file) => {
+            const content = await file.text();
+            const filePath = `${targetPath}/${file.name}`.replace(/\/+/g, '/');
+            
+            console.log(`正在上传文件: ${file.name} 到 ${filePath}`);
+            await webdavClient.putFileContents(filePath, content, { overwrite: true });
+            return file.name;
+          });
+          
+          const uploadedFiles = await Promise.all(uploadPromises);
+          
+          // 刷新文件列表
+          await loadWebdavContents(webdavClient, currentPath);
+          
+          alert(`成功上传 ${uploadedFiles.length} 个文件:\n${uploadedFiles.join('\n')}`);
+        } catch (err) {
+          console.error('上传文件失败:', err);
+          setError('上传文件失败: ' + (err.message || '未知错误'));
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      
+      input.click();
+    } catch (err) {
+      console.error('文件上传操作失败:', err);
+      setError('文件上传操作失败: ' + (err.message || '未知错误'));
+    }
+  };
+
+  // 从WebDAV下载文件到本地
+  const downloadWebdavFile = async (item) => {
+    if (storageType !== 'webdav' || !webdavClient) {
+      setError('请先连接WebDAV服务器');
+      return;
+    }
+
+    if (item.type === 'directory') {
+      setError('无法下载文件夹，请选择文件');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log(`正在下载文件: ${item.path}`);
+      
+      // 从WebDAV获取文件内容
+      const content = await webdavClient.getFileContents(item.path, { format: 'text' });
+      
+      // 创建下载链接
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = item.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log(`文件下载完成: ${item.name}`);
+    } catch (err) {
+      console.error('下载文件失败:', err);
+      setError('下载文件失败: ' + (err.message || '未知错误'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 创建目录的递归函数
+  const createDirectoryRecursive = async (path) => {
+    const pathParts = path.split('/').filter(Boolean);
+    let currentPath = '';
+    
+    for (const part of pathParts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
+      
+      const exists = await webdavClient.exists(currentPath);
+      if (!exists) {
+        await webdavClient.createDirectory(currentPath);
+        console.log(`已创建目录: ${currentPath}`);
+      }
+    }
+  };
+
   const saveCurrentFile = async () => {
     if (storageType === 'local') {
       if (!directoryHandle) {
@@ -1225,6 +1375,8 @@ const FileSidebar = ({
             position={folderMenuPosition}
             onRename={renameItem}
             onDelete={deleteItem}
+            onDownload={downloadWebdavFile}
+            storageType={storageType}
           />
         )}
       </div>
@@ -1384,6 +1536,16 @@ const FileSidebar = ({
             >
               📁 <span>新文件夹</span>
             </button>
+            {storageType === 'webdav' && isConnected && (
+              <button 
+                className="action-button"
+                onClick={uploadLocalFile}
+                disabled={isLoading}
+                title="上传本地文件到WebDAV"
+              >
+                📤 <span>上传文件</span>
+              </button>
+            )}
             <button 
               className="action-button"
               onClick={saveCurrentFile}
