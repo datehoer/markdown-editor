@@ -30,13 +30,14 @@ export function unescapePastedText(text) {
   }
 
   // Unescape: protect real backslashes first so "\\n" stays "\n" (backslash + n)
+  const BS = '\uE000'; // private-use placeholder (avoids no-control-regex)
   return s
-    .replace(/\\\\/g, '\u0000')
+    .replace(/\\\\/g, BS)
     .replace(/\\r\\n/g, '\n')
     .replace(/\\n/g, '\n')
     .replace(/\\r/g, '\n')
     .replace(/\\t/g, '\t')
     .replace(/\\"/g, '"')
     .replace(/\\'/g, "'")
-    .replace(/\u0000/g, '\\');
+    .replace(new RegExp(BS, 'g'), '\\');
 }
