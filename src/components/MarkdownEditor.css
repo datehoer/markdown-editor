@@ -138,6 +138,16 @@ body {
   background-color: var(--button-hover);
 }
 
+a.icon-button.github-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+a.icon-button.github-link:hover {
+  color: var(--text-primary);
+}
+
 /* Content container styles */
 .content-container {
   display: flex;

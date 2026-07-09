@@ -36,3 +36,14 @@ test('shows save status in the header', () => {
   // Accept current and pre-#1 status labels (Saved / Unsaved / Editing...)
   expect(screen.getByText(/saved|unsaved|editing/i)).toBeInTheDocument();
 });
+
+test('links to the GitHub repository from the header', () => {
+  render(<App />);
+  const githubLink = screen.getByRole('link', { name: /view on github/i });
+  expect(githubLink).toHaveAttribute(
+    'href',
+    'https://github.com/datehoer/markdown-editor'
+  );
+  expect(githubLink).toHaveAttribute('target', '_blank');
+  expect(githubLink).toHaveAttribute('rel', expect.stringContaining('noopener'));
+});
