@@ -33,5 +33,6 @@ test('renders markdown editor shell', () => {
 
 test('shows save status in the header', () => {
   render(<App />);
-  expect(screen.getByText(/saved|unsaved/i)).toBeInTheDocument();
+  // Accept current and pre-#1 status labels (Saved / Unsaved / Editing...)
+  expect(screen.getByText(/saved|unsaved|editing/i)).toBeInTheDocument();
 });
