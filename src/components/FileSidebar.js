@@ -1,18 +1,18 @@
-import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import './FileSidebar.css';
-// 引入webdav客户端库
 import { createClient } from 'webdav';
+import { isSupportedFileExtension } from '../utils/supportedFiles';
+import { createDirectoryRecursive } from '../utils/webdavPaths';
+import useSidebarResize from '../hooks/useSidebarResize';
+import WebdavConnectForm from './sidebar/WebdavConnectForm';
+import WebdavHistoryList from './sidebar/WebdavHistoryList';
+import FileBrowser from './sidebar/FileBrowser';
 
 const WEBDAV_HISTORY_KEY = 'webdav_history';
 const WEBDAV_SESSION_PASSWORDS_KEY = 'webdav_session_passwords';
 
-/** Stable key for a WebDAV connection (no password). */
 const webdavConnectionKey = (url, username) => `${username || ''}@${url || ''}`;
 
-/**
- * Read session-only passwords map from sessionStorage.
- * Passwords are never written to localStorage.
- */
 const loadSessionPasswords = () => {
   try {
     const raw = sessionStorage.getItem(WEBDAV_SESSION_PASSWORDS_KEY);
@@ -48,19 +48,16 @@ const clearSessionPassword = (url, username) => {
   }
 };
 
-/** Strip password fields from history entries (migration from older builds). */
 const sanitizeHistoryEntries = (entries) => {
   if (!Array.isArray(entries)) return [];
   return entries
     .filter((item) => item && typeof item === 'object')
     .map(({ password, ...rest }) => ({
       ...rest,
-      // keep flag only for UI; actual secret lives in sessionStorage if remembered
       savePassword: Boolean(rest.savePassword),
     }));
 };
 
-/** Clear session password only if no remaining history row shares the same connection key. */
 const clearSessionPasswordIfUnused = (history, url, username) => {
   const stillExists = (history || []).some(
     (item) => item && item.url === url && item.username === username
@@ -68,79 +65,6 @@ const clearSessionPasswordIfUnused = (history, url, username) => {
   if (!stillExists) {
     clearSessionPassword(url, username);
   }
-};
-
-// 添加面包屑导航组件
-const PathBreadcrumbs = ({ path, storageType, onNavigate }) => {
-  // 解析路径
-  const parts = path ? path.split('/').filter(Boolean) : [];
-  const isRoot = parts.length === 0;
-  
-  return (
-    <div className="path-breadcrumbs">
-      <span 
-        className={`breadcrumb-item ${isRoot ? 'active' : ''}`}
-        onClick={() => onNavigate('/')}
-        title="根目录"
-      >
-        {storageType === 'webdav' ? 'WebDAV:' : '根目录'}
-      </span>
-      
-      {parts.map((part, index) => {
-        // 构建到这个部分的路径
-        const partPath = '/' + parts.slice(0, index + 1).join('/');
-        const isLast = index === parts.length - 1;
-        
-        return (
-          <React.Fragment key={index}>
-            <span className="breadcrumb-separator">/</span>
-            <span 
-              className={`breadcrumb-item ${isLast ? 'active' : ''}`}
-              onClick={() => onNavigate(partPath)}
-              title={part}
-            >
-              {part}
-            </span>
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-};
-
-// 文件操作菜单组件
-const FileItemMenu = ({ item, position, onRename, onDelete, onDownload, storageType }) => {
-  return (
-    <div 
-      className="file-context-menu"
-      style={{
-        position: 'fixed',
-        top: position.y,
-        left: position.x
-      }}
-    >
-      <div 
-        className="context-menu-item"
-        onClick={() => onRename(item)}
-      >
-        <span>✏️ 重命名</span>
-      </div>
-      {storageType === 'webdav' && item.type === 'file' && (
-        <div 
-          className="context-menu-item"
-          onClick={() => onDownload(item)}
-        >
-          <span>⬇️ 下载到本地</span>
-        </div>
-      )}
-      <div 
-        className="context-menu-item"
-        onClick={() => onDelete(item)}
-      >
-        <span>🗑️ 删除</span>
-      </div>
-    </div>
-  );
 };
 
 const FileSidebar = forwardRef(({ 
@@ -155,11 +79,6 @@ const FileSidebar = forwardRef(({
   const [error, setError] = useState(null);
   const [directoryHandle, setDirectoryHandle] = useState(null);
   
-  // 侧边栏宽度相关状态
-  const sidebarRef = useRef(null);
-  const [sidebarWidth, setSidebarWidth] = useState(250);
-  const isDraggingRef = useRef(false);
-  
   const [storageType, setStorageType] = useState('local'); // local 或 webdav
   const [showWebdavForm, setShowWebdavForm] = useState(false);
   const [webdavConfig, setWebdavConfig] = useState({
@@ -172,6 +91,13 @@ const FileSidebar = forwardRef(({
   });
   const [webdavClient, setWebdavClient] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+
+  const {
+    sidebarRef,
+    sidebarWidth,
+    setSidebarWidth,
+    handleMouseDown,
+  } = useSidebarResize({ isConnected, storageType });
   
   // 历史连接相关状态
   const [webdavHistory, setWebdavHistory] = useState([]);
@@ -185,109 +111,30 @@ const FileSidebar = forwardRef(({
   // 添加本地目录句柄缓存，用于导航
   const [directoryHandleCache, setDirectoryHandleCache] = useState({});
 
-  // 支持的文件扩展名检查函数
-  const isSupportedFileExtension = (filename) => {
-    const supportedExtensions = ['.md', '.txt', '.json', '.xml', '.yaml', '.yml'];
-    return supportedExtensions.some(ext => filename.endsWith(ext));
-  };
-
-  const handleMouseMove = useCallback((e) => {
-    if (isDraggingRef.current && sidebarRef.current) {
-      // 计算新宽度 - 使用pageX而不是clientX，以获得更准确的位置
-      const newWidth = e.pageX;
-      // 根据是否连接WebDAV设定最小宽度
-      const minWidth = isConnected && storageType === 'webdav' ? 220 : 180;
-      
-      if (newWidth >= minWidth) {
-        setSidebarWidth(newWidth);
-        sidebarRef.current.style.width = `${newWidth}px`;
-        
-        // 设置宽度状态以控制按钮文本显示
-        sidebarRef.current.dataset.compact = newWidth < 240 ? 'true' : 'false';
-      }
-    }
-  }, [isConnected, storageType]);
-
-  const handleMouseUp = useCallback(() => {
-    isDraggingRef.current = false;
-    
-    // 触发一个resize事件，通知其他组件侧边栏大小已更改
-    window.dispatchEvent(new Event('resize'));
-  }, []);
-
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    isDraggingRef.current = true;
-  };
-
-  // 设置和清理事件监听器
+  // 加载WebDAV历史连接记录（迁移清除 localStorage 中的明文密码）
   useEffect(() => {
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [handleMouseMove, handleMouseUp]);
-
-  // 加载WebDAV历史连接记录和侧边栏宽度
-  useEffect(() => {
-    const loadWebdavHistory = () => {
-      try {
-        const savedHistory = localStorage.getItem(WEBDAV_HISTORY_KEY);
-        if (savedHistory) {
-          const parsedHistory = JSON.parse(savedHistory);
-          if (Array.isArray(parsedHistory)) {
-            // 迁移：去掉历史记录里残留的明文密码，并写回 localStorage
-            const cleaned = sanitizeHistoryEntries(parsedHistory);
-            const hadPasswords = parsedHistory.some((item) => item && item.password);
-            if (hadPasswords) {
-              localStorage.setItem(WEBDAV_HISTORY_KEY, JSON.stringify(cleaned));
-              console.info('已从 WebDAV 历史记录中移除明文密码（改用会话存储）');
-            }
-            setWebdavHistory(cleaned);
+    try {
+      const savedHistory = localStorage.getItem(WEBDAV_HISTORY_KEY);
+      if (savedHistory) {
+        const parsedHistory = JSON.parse(savedHistory);
+        if (Array.isArray(parsedHistory)) {
+          const cleaned = sanitizeHistoryEntries(parsedHistory);
+          const hadPasswords = parsedHistory.some((item) => item && item.password);
+          if (hadPasswords) {
+            localStorage.setItem(WEBDAV_HISTORY_KEY, JSON.stringify(cleaned));
+            console.info('已从 WebDAV 历史记录中移除明文密码（改用会话存储）');
           }
+          setWebdavHistory(cleaned);
         }
-      } catch (err) {
-        console.error('加载WebDAV历史记录失败:', err);
       }
-    };
-    
-    const loadSidebarWidth = () => {
-      try {
-        const savedWidth = localStorage.getItem('sidebar_width');
-        if (savedWidth) {
-          const width = parseInt(savedWidth, 10);
-          if (!isNaN(width) && width >= 180) {
-            setSidebarWidth(width);
-          }
-        }
-      } catch (err) {
-        console.error('加载侧边栏宽度失败:', err);
-      }
-    };
-    
-    loadWebdavHistory();
-    loadSidebarWidth();
-  }, []);
-  
-  // 保存侧边栏宽度
-  useEffect(() => {
-    if (sidebarWidth >= 180) {
-      localStorage.setItem('sidebar_width', sidebarWidth.toString());
-      
-      // 更新紧凑模式状态
-      if (sidebarRef.current) {
-        sidebarRef.current.dataset.compact = sidebarWidth < 240 ? 'true' : 'false';
-      }
+    } catch (err) {
+      console.error('加载WebDAV历史记录失败:', err);
     }
-  }, [sidebarWidth]);
+  }, []);
   
   // 保存WebDAV历史连接记录（元数据进 localStorage；密码仅进 sessionStorage）
   const saveWebdavHistory = (config) => {
     try {
-      // 绝不把 password 写入 localStorage
       const configToSave = {
         url: config.url,
         username: config.username,
@@ -304,7 +151,6 @@ const FileSidebar = forwardRef(({
         clearSessionPassword(config.url, config.username);
       }
       
-      // 使用配置URL作为唯一标识
       const existingIndex = webdavHistory.findIndex(
         item => item.url === config.url && item.username === config.username
       );
@@ -312,13 +158,10 @@ const FileSidebar = forwardRef(({
       let newHistory = [...webdavHistory];
       
       if (existingIndex >= 0) {
-        // 更新现有连接
         newHistory[existingIndex] = configToSave;
       } else {
-        // 添加新连接
         newHistory.unshift(configToSave);
         
-        // 如果超过5个连接，删除最老的，并清理被挤出条目的会话密码
         if (newHistory.length > 5) {
           const evicted = newHistory.slice(5);
           newHistory = newHistory.slice(0, 5);
@@ -344,7 +187,6 @@ const FileSidebar = forwardRef(({
       const newHistory = [...webdavHistory];
       newHistory.splice(index, 1);
 
-      // 仅当没有其它历史项共用同一 url+username 时才清会话密码
       if (removed) {
         clearSessionPasswordIfUnused(newHistory, removed.url, removed.username);
       }
@@ -366,7 +208,6 @@ const FileSidebar = forwardRef(({
       path: config.path,
       autoCreateDirectory: config.autoCreateDirectory || false,
       savePassword: config.savePassword || false,
-      // 优先会话存储；兼容旧数据若仍带 password 字段则读取一次
       password: sessionPassword || config.password || ''
     });
     
@@ -563,21 +404,7 @@ const FileSidebar = forwardRef(({
         // 如果路径不存在，并且启用了自动创建目录选项
         if (!pathExists && webdavConfig.autoCreateDirectory) {
           try {
-            // 按层级递归创建目录
-            const pathParts = webdavConfig.path.split('/').filter(Boolean);
-            let currentPath = '';
-            
-            for (const part of pathParts) {
-              currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
-              
-              // 检查当前层级的路径是否存在
-              const exists = await client.exists(currentPath);
-              if (!exists) {
-                // 如果不存在，创建该目录
-                await client.createDirectory(currentPath);
-                console.log(`已创建目录: ${currentPath}`);
-              }
-            }
+            await createDirectoryRecursive(client, webdavConfig.path);
           } catch (createDirErr) {
             throw new Error(`自动创建目录失败: ${createDirErr.message}`);
           }
@@ -625,21 +452,7 @@ const FileSidebar = forwardRef(({
       // 如果路径不存在，并且启用了自动创建目录选项
       if (!exists && webdavConfig.autoCreateDirectory) {
         try {
-          // 按层级递归创建目录
-          const pathParts = path.split('/').filter(Boolean);
-          let currentPath = '';
-          
-          for (const part of pathParts) {
-            currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
-            
-            // 检查当前层级的路径是否存在
-            const exists = await client.exists(currentPath);
-            if (!exists) {
-              // 如果不存在，创建该目录
-              await client.createDirectory(currentPath);
-              console.log(`已创建目录: ${currentPath}`);
-            }
-          }
+          await createDirectoryRecursive(client, path);
         } catch (createDirErr) {
           throw new Error(`自动创建目录失败: ${createDirErr.message}`);
         }
@@ -873,109 +686,20 @@ const FileSidebar = forwardRef(({
     }
   };
 
-  const renderWebdavForm = () => {
-    return (
-      <div className="webdav-form">
-        <h4>连接WebDAV服务器</h4>
-        
-        <div className="form-group">
-          <label>服务器地址:</label>
-          <input 
-            type="url" 
-            name="url" 
-            value={webdavConfig.url} 
-            onChange={handleWebdavConfigChange}
-            placeholder="https://example.com/dav"
-          />
-        </div>
-        
-        <div className="form-group">
-          <label>用户名:</label>
-          <input 
-            type="text" 
-            name="username" 
-            value={webdavConfig.username} 
-            onChange={handleWebdavConfigChange}
-          />
-        </div>
-        
-        <div className="form-group">
-          <label>密码:</label>
-          <input 
-            type="password" 
-            name="password" 
-            value={webdavConfig.password} 
-            onChange={handleWebdavConfigChange}
-          />
-        </div>
-        
-        <div className="form-group">
-          <label>初始路径:</label>
-          <input 
-            type="text" 
-            name="path" 
-            value={webdavConfig.path} 
-            onChange={handleWebdavConfigChange}
-            placeholder="/webdav"
-          />
-        </div>
-        
-        <div className="form-group">
-          <label className="checkbox-label">
-            <input 
-              type="checkbox" 
-              name="autoCreateDirectory" 
-              checked={webdavConfig.autoCreateDirectory} 
-              onChange={handleWebdavConfigChange}
-            />
-            自动创建不存在的文件夹
-          </label>
-        </div>
-
-        <div className="form-group">
-          <label className="checkbox-label">
-            <input 
-              type="checkbox" 
-              name="savePassword" 
-              checked={webdavConfig.savePassword} 
-              onChange={handleWebdavConfigChange}
-            />
-            记住密码（仅本次浏览器会话，关闭标签页后清除；不会写入 localStorage）
-          </label>
-        </div>
-        
-        <div className="form-actions form-actions-triple">
-          <button 
-            className="sidebar-button secondary-button"
-            onClick={toggleWebdavHistory}
-            title="返回历史连接"
-          >
-            历史
-          </button>
-          <button 
-            className="sidebar-button secondary-button"
-            onClick={() => setShowWebdavForm(false)}
-          >
-            取消
-          </button>
-          <button 
-            className="sidebar-button primary-button"
-            onClick={connectWebdav}
-            disabled={isLoading}
-          >
-            连接
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   const handleWebdavConfigChange = (e) => {
     const { name, value, type, checked } = e.target;
     setWebdavConfig({
       ...webdavConfig,
       [name]: type === 'checkbox' ? checked : value
     });
+  };
+
+  const handleFileContextMenu = (e, item) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFolderMenuPosition({ x: e.clientX, y: e.clientY });
+    setSelectedItem(item);
+    setShowFolderMenu(true);
   };
 
   const createNewFile = async (folderPath, folderHandle) => {
@@ -1037,21 +761,7 @@ const FileSidebar = forwardRef(({
         // 如果父目录不存在，且开启了自动创建目录
         if (!parentExists && webdavConfig.autoCreateDirectory) {
           try {
-            // 按层级递归创建父目录
-            const pathParts = parentPath.split('/').filter(Boolean);
-            let currentPath = '';
-            
-            for (const part of pathParts) {
-              currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
-              
-              // 检查当前层级的路径是否存在
-              const exists = await webdavClient.exists(currentPath);
-              if (!exists) {
-                // 如果不存在，创建该目录
-                await webdavClient.createDirectory(currentPath);
-                console.log(`已创建目录: ${currentPath}`);
-              }
-            }
+            await createDirectoryRecursive(webdavClient, parentPath);
           } catch (createDirErr) {
             throw new Error(`自动创建目录失败: ${createDirErr.message}`);
           }
@@ -1107,21 +817,7 @@ const FileSidebar = forwardRef(({
         // 如果父目录不存在，且开启了自动创建目录
         if (!parentExists && webdavConfig.autoCreateDirectory) {
           try {
-            // 按层级递归创建父目录
-            const pathParts = targetPath.split('/').filter(Boolean);
-            let currentPath = '';
-            
-            for (const part of pathParts) {
-              currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
-              
-              // 检查当前层级的路径是否存在
-              const exists = await webdavClient.exists(currentPath);
-              if (!exists) {
-                // 如果不存在，创建该目录
-                await webdavClient.createDirectory(currentPath);
-                console.log(`已创建目录: ${currentPath}`);
-              }
-            }
+            await createDirectoryRecursive(webdavClient, targetPath);
           } catch (createDirErr) {
             throw new Error(`自动创建目录失败: ${createDirErr.message}`);
           }
@@ -1170,7 +866,7 @@ const FileSidebar = forwardRef(({
           // 检查目标路径是否存在
           const pathExists = await webdavClient.exists(targetPath);
           if (!pathExists && webdavConfig.autoCreateDirectory) {
-            await createDirectoryRecursive(targetPath);
+            await createDirectoryRecursive(webdavClient, targetPath);
           } else if (!pathExists) {
             throw new Error(`目标路径不存在: ${targetPath}`);
           }
@@ -1247,35 +943,14 @@ const FileSidebar = forwardRef(({
     }
   };
 
-  // 创建目录的递归函数
-  const createDirectoryRecursive = async (path) => {
-    const pathParts = path.split('/').filter(Boolean);
-    let currentPath = '';
-    
-    for (const part of pathParts) {
-      currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
-      
-      const exists = await webdavClient.exists(currentPath);
-      if (!exists) {
-        await webdavClient.createDirectory(currentPath);
-        console.log(`已创建目录: ${currentPath}`);
-      }
-    }
-  };
-
   /**
    * 保存当前文档。
-   * 可通过 options 覆盖内容/路径（供父组件通过 ref 调用）：
-   * - content: 文件内容
-   * - path: WebDAV 完整路径（优先覆盖默认路径）
-   * - fileName: 文件名（默认 `${documentTitle}.md`）
-   * - requireWebdav: 为 true 时必须处于 WebDAV 连接，避免误写入本地
+   * options: { content, path, fileName, requireWebdav }
    */
   const saveCurrentFile = async (options = {}) => {
     const content = options.content !== undefined ? options.content : markdownContent;
     const fileName = options.fileName || `${documentTitle}.md`;
 
-    // 远程文档不得在侧边栏已切到本地时静默写到本地目录
     if (options.requireWebdav && (storageType !== 'webdav' || !webdavClient)) {
       const msg = '当前文档来自 WebDAV，但侧边栏未连接 WebDAV，无法保存到远程';
       setError(msg);
@@ -1320,14 +995,13 @@ const FileSidebar = forwardRef(({
       }
       
       try {
-        // 优先使用显式路径（已打开文件），否则保存到当前目录
         const filePath = options.path || `${currentPath}/${fileName}`.replace(/\/+/g, '/');
         const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
         const parentExists = await webdavClient.exists(parentPath);
         
         if (!parentExists && webdavConfig.autoCreateDirectory) {
           try {
-            await createDirectoryRecursive(parentPath);
+            await createDirectoryRecursive(webdavClient, parentPath);
           } catch (createDirErr) {
             throw new Error(`自动创建目录失败: ${createDirErr.message}`);
           }
@@ -1337,7 +1011,6 @@ const FileSidebar = forwardRef(({
         
         await webdavClient.putFileContents(filePath, content, { overwrite: true });
         
-        // 刷新文件所在目录
         const listPath = parentPath || '/';
         await navigateTo(listPath);
         
@@ -1366,7 +1039,6 @@ const FileSidebar = forwardRef(({
     return { success: false, error: '未连接任何存储' };
   };
 
-  // 稳定暴露 saveFile，避免每次 render 重建 imperative handle
   const saveCurrentFileRef = useRef(saveCurrentFile);
   saveCurrentFileRef.current = saveCurrentFile;
 
@@ -1374,224 +1046,23 @@ const FileSidebar = forwardRef(({
     saveFile: (options) => saveCurrentFileRef.current(options),
   }), []);
 
-  const renderFileList = () => {
-    // 检查当前状态是否有效：本地模式需要directoryHandle，WebDAV模式需要webdavClient
-    const isValidState = 
-      (storageType === 'local' && directoryHandle) || 
-      (storageType === 'webdav' && webdavClient);
-    
-    if (!isValidState) {
-      return (
-        <div className="connect-prompt">
-          {storageType === 'local' 
-            ? '请选择本地文件夹' 
-            : '请连接WebDAV服务器'}
-        </div>
-      );
-    }
-    
-    return (
-      <div className="file-browser-container">
-        <div className="path-navigation">
-          <button 
-            className="nav-button" 
-            onClick={navigateUp}
-            disabled={currentPath === '/' || currentPath === '/webdav'}
-            title="返回上一级"
-          >
-            ⬆️
-          </button>
-          
-          <button 
-            className="nav-button" 
-            onClick={refreshFileList}
-            title="刷新"
-          >
-            🔄
-          </button>
-          
-          <PathBreadcrumbs 
-            path={currentPath} 
-            storageType={storageType} 
-            onNavigate={navigateTo} 
-          />
-        </div>
-        
-        <div className="file-items-container">
-          {files.length > 0 ? (
-            renderFileTree()
-          ) : (
-            <div className="empty-folder">
-              <p>文件夹为空或没有Markdown文件</p>
-              <p className="debug-info">当前路径: {currentPath}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderFileTree = () => {
-    return (
-      <div className="file-list">
-        {files.map(item => (
-          <div 
-            key={item.path}
-            className={`file-list-item ${item.type === 'file' && currentFilePath === item.path ? 'active' : ''}`}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              
-              setFolderMenuPosition({
-                x: e.clientX,
-                y: e.clientY
-              });
-              
-              setSelectedItem(item);
-              setShowFolderMenu(true);
-            }}
-          >
-            {item.type === 'directory' ? (
-              <div 
-                className="directory-item"
-                onClick={() => navigateTo(item.path)}
-              >
-                <div className="folder-icon">📁</div>
-                <div className="folder-name">{item.name}</div>
-              </div>
-            ) : (
-              <div 
-                className="file-item"
-                onClick={() => openFile(item.handle)}
-              >
-                <div className="file-icon">📄</div>
-                <div className="file-name">{item.name}</div>
-              </div>
-            )}
-          </div>
-        ))}
-        
-        {showFolderMenu && selectedItem && (
-          <FileItemMenu 
-            item={selectedItem}
-            position={folderMenuPosition}
-            onRename={renameItem}
-            onDelete={deleteItem}
-            onDownload={downloadWebdavFile}
-            storageType={storageType}
-          />
-        )}
-      </div>
-    );
-  };
-
-  const renderWebdavHistory = () => {
-    return (
-      <div className="webdav-history">
-        <h4>历史连接</h4>
-        
-        {webdavHistory.length === 0 ? (
-          <div className="empty-history">
-            暂无历史连接记录
-          </div>
-        ) : (
-          <div className="history-list">
-            {webdavHistory.map((item, index) => (
-              <div key={index} className="history-item">
-                <div 
-                  className="history-item-content"
-                  onClick={() => selectHistoryConnection(item)}
-                >
-                  <div className="history-item-label">{item.label}</div>
-                  <div className="history-item-url">{item.url}</div>
-                </div>
-                <button
-                  className="history-delete-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeWebdavHistory(index);
-                  }}
-                  title="删除此连接"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        <div className="form-actions">
-          <button 
-            className="sidebar-button secondary-button"
-            onClick={toggleWebdavHistory}
-          >
-            返回
-          </button>
-          <button 
-            className="sidebar-button primary-button"
-            onClick={() => {
-              setShowWebdavHistory(false);
-              setShowWebdavForm(true);
-            }}
-          >
-            新建连接
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   // 断开WebDAV连接
   const disconnectWebdav = () => {
     if (storageType === 'webdav' && webdavClient) {
-      // 重置WebDAV相关状态
       setWebdavClient(null);
       setIsConnected(false);
       setFiles([]);
       setCurrentPath('/');
 
-      // 未勾选“记住密码”时，清除内存中的密码；会话存储也不保留
       if (!webdavConfig.savePassword) {
         clearSessionPassword(webdavConfig.url, webdavConfig.username);
         setWebdavConfig((prev) => ({ ...prev, password: '' }));
       }
-      
-      // 切换到默认状态
+
       setStorageType('local');
       setError(null);
     }
   };
-
-  // 处理侧边栏宽度变化时按钮文本的显示/隐藏
-  useEffect(() => {
-    const updateButtonText = () => {
-      if (sidebarRef.current) {
-        const width = sidebarRef.current.offsetWidth;
-        // 设置一个自定义数据属性表示宽度状态
-        sidebarRef.current.dataset.compact = width < 240 ? 'true' : 'false';
-      }
-    };
-    
-    // 初始设置
-    updateButtonText();
-    
-    // 当宽度变化时更新
-    const observer = new ResizeObserver(() => {
-      updateButtonText();
-    });
-    
-    if (sidebarRef.current) {
-      observer.observe(sidebarRef.current);
-    }
-    
-    // 监听窗口resize事件，确保在窗口调整大小时也能正确触发
-    window.addEventListener('resize', updateButtonText);
-    
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateButtonText);
-    };
-  }, []);
 
   return (
     <div 
@@ -1622,9 +1093,25 @@ const FileSidebar = forwardRef(({
       </div>
       
       {showWebdavForm ? (
-        renderWebdavForm()
+        <WebdavConnectForm
+          webdavConfig={webdavConfig}
+          onChange={handleWebdavConfigChange}
+          onConnect={connectWebdav}
+          onCancel={() => setShowWebdavForm(false)}
+          onShowHistory={toggleWebdavHistory}
+          isLoading={isLoading}
+        />
       ) : showWebdavHistory ? (
-        renderWebdavHistory()
+        <WebdavHistoryList
+          webdavHistory={webdavHistory}
+          onSelect={selectHistoryConnection}
+          onRemove={removeWebdavHistory}
+          onBack={toggleWebdavHistory}
+          onNewConnection={() => {
+            setShowWebdavHistory(false);
+            setShowWebdavForm(true);
+          }}
+        />
       ) : (
         <div className="sidebar-content">
           <div className="action-toolbar">
@@ -1676,14 +1163,25 @@ const FileSidebar = forwardRef(({
               <div>加载中...</div>
             </div>
           ) : (
-            (storageType === 'local' && directoryHandle) || (storageType === 'webdav' && webdavClient) ? 
-              renderFileList() : (
-              <div className="connect-prompt">
-                {storageType === 'local' 
-                  ? '请选择本地文件夹' 
-                  : '请连接WebDAV服务器'}
-              </div>
-            )
+            <FileBrowser
+              storageType={storageType}
+              directoryHandle={directoryHandle}
+              webdavClient={webdavClient}
+              currentPath={currentPath}
+              files={files}
+              currentFilePath={currentFilePath}
+              showFolderMenu={showFolderMenu}
+              selectedItem={selectedItem}
+              folderMenuPosition={folderMenuPosition}
+              onNavigateUp={navigateUp}
+              onRefresh={refreshFileList}
+              onNavigate={navigateTo}
+              onOpenFile={openFile}
+              onContextMenu={handleFileContextMenu}
+              onRename={renameItem}
+              onDelete={deleteItem}
+              onDownload={downloadWebdavFile}
+            />
           )}
         </div>
       )}
