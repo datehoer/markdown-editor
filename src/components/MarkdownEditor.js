@@ -49,6 +49,8 @@ const MarkdownEditor = () => {
           content: markdown,
           path: currentFilePath || undefined,
           fileName: `${title}.md`,
+          // 防止侧边栏已切到本地时把 WebDAV 文档误写入本地文件夹
+          requireWebdav: true,
         });
         if (result?.success) {
           setIsSaved(true);

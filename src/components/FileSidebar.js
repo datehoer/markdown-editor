@@ -1180,10 +1180,18 @@ const FileSidebar = forwardRef(({
    * - content: 文件内容
    * - path: WebDAV 完整路径（优先覆盖默认路径）
    * - fileName: 文件名（默认 `${documentTitle}.md`）
+   * - requireWebdav: 为 true 时必须处于 WebDAV 连接，避免误写入本地
    */
   const saveCurrentFile = async (options = {}) => {
     const content = options.content !== undefined ? options.content : markdownContent;
     const fileName = options.fileName || `${documentTitle}.md`;
+
+    // 远程文档不得在侧边栏已切到本地时静默写到本地目录
+    if (options.requireWebdav && (storageType !== 'webdav' || !webdavClient)) {
+      const msg = '当前文档来自 WebDAV，但侧边栏未连接 WebDAV，无法保存到远程';
+      setError(msg);
+      return { success: false, error: msg };
+    }
 
     if (storageType === 'local') {
       if (!directoryHandle) {
@@ -1269,10 +1277,13 @@ const FileSidebar = forwardRef(({
     return { success: false, error: '未连接任何存储' };
   };
 
-  // 向父组件暴露保存 API，替代 DOM / __reactProps$ 黑科技
+  // 稳定暴露 saveFile，避免每次 render 重建 imperative handle
+  const saveCurrentFileRef = useRef(saveCurrentFile);
+  saveCurrentFileRef.current = saveCurrentFile;
+
   useImperativeHandle(ref, () => ({
-    saveFile: saveCurrentFile,
-  }));
+    saveFile: (options) => saveCurrentFileRef.current(options),
+  }), []);
 
   const renderFileList = () => {
     // 检查当前状态是否有效：本地模式需要directoryHandle，WebDAV模式需要webdavClient
