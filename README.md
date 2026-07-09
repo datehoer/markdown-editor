@@ -36,7 +36,7 @@ image.png
 
 ### 前提条件
 
-- Node.js (v14+)
+- Node.js (v22 LTS recommended; v20+ supported)
 - npm 或 yarn
 
 ### 标准安装步骤
