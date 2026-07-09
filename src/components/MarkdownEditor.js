@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import html2canvas from 'html2canvas';
 import html2pdf from 'html2pdf.js';
 import FileSidebar from './FileSidebar';
+import { unescapePastedText } from '../utils/unescapePastedText';
 
 import './MarkdownEditor.css';
 
@@ -240,6 +241,40 @@ const MarkdownEditor = () => {
   const handleMarkdownChange = (e) => {
     setMarkdown(e.target.value);
     setIsSaved(false);
+  };
+
+  /**
+   * Paste handler: if clipboard is one line with literal "\\n" escapes
+   * (common when copying from JSON / logs), convert them to real newlines.
+   */
+  const handleMarkdownPaste = (e) => {
+    const raw = e.clipboardData?.getData('text/plain');
+    if (!raw) return;
+
+    const unescaped = unescapePastedText(raw);
+    if (unescaped === raw) return; // nothing to fix — let browser paste normally
+
+    e.preventDefault();
+
+    const textarea = editorRef.current;
+    if (!textarea) {
+      setMarkdown(unescaped);
+      setIsSaved(false);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const next = markdown.substring(0, start) + unescaped + markdown.substring(end);
+    setMarkdown(next);
+    setIsSaved(false);
+
+    // Restore caret after React re-render
+    const caret = start + unescaped.length;
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(caret, caret);
+    });
   };
   
   // Handle title change
@@ -536,6 +571,7 @@ const MarkdownEditor = () => {
               className="markdown-input"
               value={markdown}
               onChange={handleMarkdownChange}
+              onPaste={handleMarkdownPaste}
               onScroll={syncScroll}
               placeholder="Type your Markdown here..."
             />
