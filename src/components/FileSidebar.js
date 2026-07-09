@@ -49,12 +49,26 @@ const clearSessionPassword = (url, username) => {
 };
 
 /** Strip password fields from history entries (migration from older builds). */
-const sanitizeHistoryEntries = (entries) =>
-  (entries || []).map(({ password, ...rest }) => ({
-    ...rest,
-    // keep flag only for UI; actual secret lives in sessionStorage if remembered
-    savePassword: Boolean(rest.savePassword),
-  }));
+const sanitizeHistoryEntries = (entries) => {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter((item) => item && typeof item === 'object')
+    .map(({ password, ...rest }) => ({
+      ...rest,
+      // keep flag only for UI; actual secret lives in sessionStorage if remembered
+      savePassword: Boolean(rest.savePassword),
+    }));
+};
+
+/** Clear session password only if no remaining history row shares the same connection key. */
+const clearSessionPasswordIfUnused = (history, url, username) => {
+  const stillExists = (history || []).some(
+    (item) => item && item.url === url && item.username === username
+  );
+  if (!stillExists) {
+    clearSessionPassword(url, username);
+  }
+};
 
 // 添加面包屑导航组件
 const PathBreadcrumbs = ({ path, storageType, onNavigate }) => {
@@ -224,14 +238,16 @@ const FileSidebar = forwardRef(({
         const savedHistory = localStorage.getItem(WEBDAV_HISTORY_KEY);
         if (savedHistory) {
           const parsedHistory = JSON.parse(savedHistory);
-          // 迁移：去掉历史记录里残留的明文密码，并写回 localStorage
-          const cleaned = sanitizeHistoryEntries(parsedHistory);
-          const hadPasswords = parsedHistory.some((item) => item && item.password);
-          if (hadPasswords) {
-            localStorage.setItem(WEBDAV_HISTORY_KEY, JSON.stringify(cleaned));
-            console.info('已从 WebDAV 历史记录中移除明文密码（改用会话存储）');
+          if (Array.isArray(parsedHistory)) {
+            // 迁移：去掉历史记录里残留的明文密码，并写回 localStorage
+            const cleaned = sanitizeHistoryEntries(parsedHistory);
+            const hadPasswords = parsedHistory.some((item) => item && item.password);
+            if (hadPasswords) {
+              localStorage.setItem(WEBDAV_HISTORY_KEY, JSON.stringify(cleaned));
+              console.info('已从 WebDAV 历史记录中移除明文密码（改用会话存储）');
+            }
+            setWebdavHistory(cleaned);
           }
-          setWebdavHistory(cleaned);
         }
       } catch (err) {
         console.error('加载WebDAV历史记录失败:', err);
@@ -302,9 +318,15 @@ const FileSidebar = forwardRef(({
         // 添加新连接
         newHistory.unshift(configToSave);
         
-        // 如果超过5个连接，删除最老的
+        // 如果超过5个连接，删除最老的，并清理被挤出条目的会话密码
         if (newHistory.length > 5) {
+          const evicted = newHistory.slice(5);
           newHistory = newHistory.slice(0, 5);
+          evicted.forEach((item) => {
+            if (item) {
+              clearSessionPasswordIfUnused(newHistory, item.url, item.username);
+            }
+          });
         }
       }
       
@@ -322,8 +344,9 @@ const FileSidebar = forwardRef(({
       const newHistory = [...webdavHistory];
       newHistory.splice(index, 1);
 
+      // 仅当没有其它历史项共用同一 url+username 时才清会话密码
       if (removed) {
-        clearSessionPassword(removed.url, removed.username);
+        clearSessionPasswordIfUnused(newHistory, removed.url, removed.username);
       }
       
       localStorage.setItem(WEBDAV_HISTORY_KEY, JSON.stringify(newHistory));
