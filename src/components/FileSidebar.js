@@ -16,7 +16,8 @@ const webdavConnectionKey = (url, username) => `${username || ''}@${url || ''}`;
 const loadSessionPasswords = () => {
   try {
     const raw = sessionStorage.getItem(WEBDAV_SESSION_PASSWORDS_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
