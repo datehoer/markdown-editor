@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import './FileSidebar.css';
 // 引入webdav客户端库
 import { createClient } from 'webdav';
@@ -76,12 +76,12 @@ const FileItemMenu = ({ item, position, onRename, onDelete, onDownload, storageT
   );
 };
 
-const FileSidebar = ({ 
+const FileSidebar = forwardRef(({ 
   onFileSelect, 
   currentFilePath, 
   markdownContent, 
   documentTitle
-}) => {
+}, ref) => {
   const [rootDirectory, setRootDirectory] = useState(null);
   const [files, setFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1174,7 +1174,17 @@ const FileSidebar = ({
     }
   };
 
-  const saveCurrentFile = async () => {
+  /**
+   * 保存当前文档。
+   * 可通过 options 覆盖内容/路径（供父组件通过 ref 调用）：
+   * - content: 文件内容
+   * - path: WebDAV 完整路径（优先覆盖默认路径）
+   * - fileName: 文件名（默认 `${documentTitle}.md`）
+   */
+  const saveCurrentFile = async (options = {}) => {
+    const content = options.content !== undefined ? options.content : markdownContent;
+    const fileName = options.fileName || `${documentTitle}.md`;
+
     if (storageType === 'local') {
       if (!directoryHandle) {
         setError('请先选择一个文件夹');
@@ -1182,19 +1192,18 @@ const FileSidebar = ({
       }
       
       try {
-        const fileName = `${documentTitle}.md`;
         const targetHandle = directoryHandleCache[currentPath] || directoryHandle;
         
         const fileHandle = await targetHandle.getFileHandle(fileName, { create: true });
         
         const writable = await fileHandle.createWritable();
-        await writable.write(markdownContent);
+        await writable.write(content);
         await writable.close();
         
         await navigateTo(currentPath);
         
         onFileSelect({
-          content: markdownContent,
+          content,
           name: fileName,
           path: `${currentPath}/${fileName}`.replace(/\/+/g, '/'),
           handle: fileHandle,
@@ -1214,31 +1223,14 @@ const FileSidebar = ({
       }
       
       try {
-        const fileName = `${documentTitle}.md`;
-        const filePath = `${currentPath}/${fileName}`.replace(/\/+/g, '/');
-        
-        // 检查父目录是否存在
-        const parentPath = currentPath;
+        // 优先使用显式路径（已打开文件），否则保存到当前目录
+        const filePath = options.path || `${currentPath}/${fileName}`.replace(/\/+/g, '/');
+        const parentPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
         const parentExists = await webdavClient.exists(parentPath);
         
-        // 如果父目录不存在，且开启了自动创建目录
         if (!parentExists && webdavConfig.autoCreateDirectory) {
           try {
-            // 按层级递归创建父目录
-            const pathParts = parentPath.split('/').filter(Boolean);
-            let currentPath = '';
-            
-            for (const part of pathParts) {
-              currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
-              
-              // 检查当前层级的路径是否存在
-              const exists = await webdavClient.exists(currentPath);
-              if (!exists) {
-                // 如果不存在，创建该目录
-                await webdavClient.createDirectory(currentPath);
-                console.log(`已创建目录: ${currentPath}`);
-              }
-            }
+            await createDirectoryRecursive(parentPath);
           } catch (createDirErr) {
             throw new Error(`自动创建目录失败: ${createDirErr.message}`);
           }
@@ -1246,13 +1238,16 @@ const FileSidebar = ({
           throw new Error(`父目录不存在: ${parentPath}`);
         }
         
-        await webdavClient.putFileContents(filePath, markdownContent, { overwrite: true });
+        await webdavClient.putFileContents(filePath, content, { overwrite: true });
         
-        await navigateTo(currentPath);
+        // 刷新文件所在目录
+        const listPath = parentPath || '/';
+        await navigateTo(listPath);
         
+        const savedName = filePath.split('/').filter(Boolean).pop() || fileName;
         onFileSelect({
-          content: markdownContent,
-          name: fileName,
+          content,
+          name: savedName,
           path: filePath,
           handle: { path: filePath, isWebdav: true },
           isWebdav: true
@@ -1260,7 +1255,7 @@ const FileSidebar = ({
         
         return {
           success: true,
-          fileName,
+          fileName: savedName,
           path: filePath,
           handle: { path: filePath, isWebdav: true }
         };
@@ -1270,7 +1265,14 @@ const FileSidebar = ({
         return { success: false, error: err.message };
       }
     }
+
+    return { success: false, error: '未连接任何存储' };
   };
+
+  // 向父组件暴露保存 API，替代 DOM / __reactProps$ 黑科技
+  useImperativeHandle(ref, () => ({
+    saveFile: saveCurrentFile,
+  }));
 
   const renderFileList = () => {
     // 检查当前状态是否有效：本地模式需要directoryHandle，WebDAV模式需要webdavClient
@@ -1582,6 +1584,6 @@ const FileSidebar = ({
       <div className="resize-handle" onMouseDown={handleMouseDown}></div>
     </div>
   );
-};
+});
 
 export default FileSidebar;

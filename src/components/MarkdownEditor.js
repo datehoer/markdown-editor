@@ -35,37 +35,35 @@ const MarkdownEditor = () => {
   
   const previewRef = useRef(null);
   const editorRef = useRef(null);
+  const fileSidebarRef = useRef(null);
+
   const saveCurrentFile = useCallback(async () => {
-    if (isWebdavFile && currentFileHandle) {
+    // WebDAV：通过 FileSidebar ref 写入远程文件
+    if (isWebdavFile) {
+      if (!fileSidebarRef.current?.saveFile) {
+        alert('WebDAV 保存接口不可用，请确认侧边栏已加载');
+        return { success: false, error: 'WebDAV保存接口不可用' };
+      }
       try {
-        // 对于WebDAV文件，我们将保存操作委托给FileSidebar组件
-        // 此处通过隐藏的DOM事件通信，或者可以直接在FileSidebar中使用ref调用
-        const fileNameToSave = `${title}.md`;
-        const fileSidebarRef = document.querySelector('.file-sidebar');
-        
-        // 如果存在ref，直接调用其saveCurrentFile方法
-        if (fileSidebarRef && fileSidebarRef.__reactProps$) {
-          const result = await fileSidebarRef.__reactProps$.saveMarkdown({
-            content: markdown,
-            path: currentFilePath,
-            fileName: fileNameToSave
-          });
-          
-          if (result && result.success) {
-            setIsSaved(true);
-            return { success: true };
-          } else {
-            throw new Error(result.error || '保存WebDAV文件失败');
-          }
-        } else {
-          // 回退到FileSidebar组件通过props提供的saveMarkdown方法
-          return { success: false, error: 'WebDAV保存接口不可用' };
+        const result = await fileSidebarRef.current.saveFile({
+          content: markdown,
+          path: currentFilePath || undefined,
+          fileName: `${title}.md`,
+        });
+        if (result?.success) {
+          setIsSaved(true);
+          return { success: true };
         }
+        throw new Error(result?.error || '保存WebDAV文件失败');
       } catch (err) {
         console.error('保存WebDAV文件失败:', err);
+        alert(`保存失败: ${err.message}`);
         return { success: false, error: err.message };
       }
-    } else if (currentFileHandle && !isWebdavFile) {
+    }
+
+    // 本地：已有文件句柄时直接覆写
+    if (currentFileHandle && !isWebdavFile) {
       try {
         const writable = await currentFileHandle.createWritable();
         await writable.write(markdown);
@@ -74,25 +72,43 @@ const MarkdownEditor = () => {
         return { success: true };
       } catch (err) {
         console.error('保存文件失败:', err);
+        alert(`保存失败: ${err.message}`);
         return { success: false, error: err.message };
       }
-    } else {
-      alert('请先从侧边栏选择保存位置或打开文件');
-      return { success: false, error: '无文件句柄' };
     }
+
+    // 已连接存储但尚未打开文件：委托侧边栏按标题新建/覆盖
+    if (fileSidebarRef.current?.saveFile) {
+      try {
+        const result = await fileSidebarRef.current.saveFile({
+          content: markdown,
+          fileName: `${title}.md`,
+        });
+        if (result?.success) {
+          setIsSaved(true);
+          return { success: true };
+        }
+        throw new Error(result?.error || '保存失败');
+      } catch (err) {
+        console.error('保存文件失败:', err);
+        alert(`保存失败: ${err.message}`);
+        return { success: false, error: err.message };
+      }
+    }
+
+    alert('请先从侧边栏选择保存位置或打开文件');
+    return { success: false, error: '无文件句柄' };
   }, [currentFileHandle, markdown, isWebdavFile, title, currentFilePath]);
-  // Auto-save effect
+
+  // 草稿备份到 localStorage（不等于“已保存到文件”，故不修改 isSaved）
   useEffect(() => {
     const timer = setTimeout(() => {
-      // 保存到本地存储作为备份
       localStorage.setItem('markdown-content', markdown);
       localStorage.setItem('markdown-title', title);
-      
-      setIsSaved(false);
     }, 1000);
-    
+
     return () => clearTimeout(timer);
-  }, [markdown, title, currentFileHandle]);
+  }, [markdown, title]);
 
   // Add to history when markdown changes (but not during undo/redo)
   useEffect(() => {
@@ -433,7 +449,7 @@ const MarkdownEditor = () => {
             className="document-title"
             placeholder="Untitled Document"
           />
-          <span className="save-status">{isSaved ? 'Saved' : 'Editing...'}</span>
+          <span className="save-status">{isSaved ? 'Saved' : 'Unsaved'}</span>
         </div>
         <div className="header-actions">
           <button 
@@ -493,9 +509,9 @@ const MarkdownEditor = () => {
       <div className="content-container">
         <div className={`file-sidebar-container ${isSidebarOpen ? 'open' : 'closed'}`}>
           <FileSidebar
+            ref={fileSidebarRef}
             onFileSelect={handleFileSelect}
             currentFilePath={currentFilePath}
-            saveMarkdown={saveCurrentFile}
             markdownContent={markdown}
             documentTitle={title}
           />
