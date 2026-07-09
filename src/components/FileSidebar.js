@@ -3,6 +3,73 @@ import './FileSidebar.css';
 // 引入webdav客户端库
 import { createClient } from 'webdav';
 
+const WEBDAV_HISTORY_KEY = 'webdav_history';
+const WEBDAV_SESSION_PASSWORDS_KEY = 'webdav_session_passwords';
+
+/** Stable key for a WebDAV connection (no password). */
+const webdavConnectionKey = (url, username) => `${username || ''}@${url || ''}`;
+
+/**
+ * Read session-only passwords map from sessionStorage.
+ * Passwords are never written to localStorage.
+ */
+const loadSessionPasswords = () => {
+  try {
+    const raw = sessionStorage.getItem(WEBDAV_SESSION_PASSWORDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveSessionPassword = (url, username, password) => {
+  try {
+    const map = loadSessionPasswords();
+    map[webdavConnectionKey(url, username)] = password;
+    sessionStorage.setItem(WEBDAV_SESSION_PASSWORDS_KEY, JSON.stringify(map));
+  } catch (err) {
+    console.error('保存会话密码失败:', err);
+  }
+};
+
+const getSessionPassword = (url, username) => {
+  const map = loadSessionPasswords();
+  return map[webdavConnectionKey(url, username)] || '';
+};
+
+const clearSessionPassword = (url, username) => {
+  try {
+    const map = loadSessionPasswords();
+    delete map[webdavConnectionKey(url, username)];
+    sessionStorage.setItem(WEBDAV_SESSION_PASSWORDS_KEY, JSON.stringify(map));
+  } catch (err) {
+    console.error('清除会话密码失败:', err);
+  }
+};
+
+/** Strip password fields from history entries (migration from older builds). */
+const sanitizeHistoryEntries = (entries) => {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter((item) => item && typeof item === 'object')
+    .map(({ password, ...rest }) => ({
+      ...rest,
+      // keep flag only for UI; actual secret lives in sessionStorage if remembered
+      savePassword: Boolean(rest.savePassword),
+    }));
+};
+
+/** Clear session password only if no remaining history row shares the same connection key. */
+const clearSessionPasswordIfUnused = (history, url, username) => {
+  const stillExists = (history || []).some(
+    (item) => item && item.url === url && item.username === username
+  );
+  if (!stillExists) {
+    clearSessionPassword(url, username);
+  }
+};
+
 // 添加面包屑导航组件
 const PathBreadcrumbs = ({ path, storageType, onNavigate }) => {
   // 解析路径
@@ -168,10 +235,19 @@ const FileSidebar = forwardRef(({
   useEffect(() => {
     const loadWebdavHistory = () => {
       try {
-        const savedHistory = localStorage.getItem('webdav_history');
+        const savedHistory = localStorage.getItem(WEBDAV_HISTORY_KEY);
         if (savedHistory) {
           const parsedHistory = JSON.parse(savedHistory);
-          setWebdavHistory(parsedHistory);
+          if (Array.isArray(parsedHistory)) {
+            // 迁移：去掉历史记录里残留的明文密码，并写回 localStorage
+            const cleaned = sanitizeHistoryEntries(parsedHistory);
+            const hadPasswords = parsedHistory.some((item) => item && item.password);
+            if (hadPasswords) {
+              localStorage.setItem(WEBDAV_HISTORY_KEY, JSON.stringify(cleaned));
+              console.info('已从 WebDAV 历史记录中移除明文密码（改用会话存储）');
+            }
+            setWebdavHistory(cleaned);
+          }
         }
       } catch (err) {
         console.error('加载WebDAV历史记录失败:', err);
@@ -208,23 +284,24 @@ const FileSidebar = forwardRef(({
     }
   }, [sidebarWidth]);
   
-  // 保存WebDAV历史连接记录
+  // 保存WebDAV历史连接记录（元数据进 localStorage；密码仅进 sessionStorage）
   const saveWebdavHistory = (config) => {
     try {
-      // 创建配置对象，根据设置决定是否保存密码
+      // 绝不把 password 写入 localStorage
       const configToSave = {
         url: config.url,
         username: config.username,
         path: config.path,
         autoCreateDirectory: config.autoCreateDirectory,
-        savePassword: config.savePassword,
+        savePassword: Boolean(config.savePassword),
         label: `${config.username}@${config.url}${config.path}`,
         timestamp: new Date().getTime()
       };
       
-      // 如果选择保存密码，则添加密码字段
-      if (config.savePassword) {
-        configToSave.password = config.password;
+      if (config.savePassword && config.password) {
+        saveSessionPassword(config.url, config.username, config.password);
+      } else {
+        clearSessionPassword(config.url, config.username);
       }
       
       // 使用配置URL作为唯一标识
@@ -241,14 +318,19 @@ const FileSidebar = forwardRef(({
         // 添加新连接
         newHistory.unshift(configToSave);
         
-        // 如果超过5个连接，删除最老的
+        // 如果超过5个连接，删除最老的，并清理被挤出条目的会话密码
         if (newHistory.length > 5) {
+          const evicted = newHistory.slice(5);
           newHistory = newHistory.slice(0, 5);
+          evicted.forEach((item) => {
+            if (item) {
+              clearSessionPasswordIfUnused(newHistory, item.url, item.username);
+            }
+          });
         }
       }
       
-      // 保存到localStorage
-      localStorage.setItem('webdav_history', JSON.stringify(newHistory));
+      localStorage.setItem(WEBDAV_HISTORY_KEY, JSON.stringify(newHistory));
       setWebdavHistory(newHistory);
     } catch (err) {
       console.error('保存WebDAV历史记录失败:', err);
@@ -258,10 +340,16 @@ const FileSidebar = forwardRef(({
   // 从历史记录中删除WebDAV连接
   const removeWebdavHistory = (index) => {
     try {
+      const removed = webdavHistory[index];
       const newHistory = [...webdavHistory];
       newHistory.splice(index, 1);
+
+      // 仅当没有其它历史项共用同一 url+username 时才清会话密码
+      if (removed) {
+        clearSessionPasswordIfUnused(newHistory, removed.url, removed.username);
+      }
       
-      localStorage.setItem('webdav_history', JSON.stringify(newHistory));
+      localStorage.setItem(WEBDAV_HISTORY_KEY, JSON.stringify(newHistory));
       setWebdavHistory(newHistory);
     } catch (err) {
       console.error('删除WebDAV历史记录失败:', err);
@@ -270,6 +358,7 @@ const FileSidebar = forwardRef(({
   
   // 从历史记录中选择连接
   const selectHistoryConnection = (config) => {
+    const sessionPassword = getSessionPassword(config.url, config.username);
     setWebdavConfig({
       ...webdavConfig,
       url: config.url,
@@ -277,8 +366,8 @@ const FileSidebar = forwardRef(({
       path: config.path,
       autoCreateDirectory: config.autoCreateDirectory || false,
       savePassword: config.savePassword || false,
-      // 如果历史记录中保存了密码，则使用它
-      password: config.password || ''
+      // 优先会话存储；兼容旧数据若仍带 password 字段则读取一次
+      password: sessionPassword || config.password || ''
     });
     
     setShowWebdavHistory(false);
@@ -851,7 +940,7 @@ const FileSidebar = forwardRef(({
               checked={webdavConfig.savePassword} 
               onChange={handleWebdavConfigChange}
             />
-            保存密码（安全提醒：密码将以明文存储在浏览器中）
+            记住密码（仅本次浏览器会话，关闭标签页后清除；不会写入 localStorage）
           </label>
         </div>
         
@@ -1460,6 +1549,12 @@ const FileSidebar = forwardRef(({
       setIsConnected(false);
       setFiles([]);
       setCurrentPath('/');
+
+      // 未勾选“记住密码”时，清除内存中的密码；会话存储也不保留
+      if (!webdavConfig.savePassword) {
+        clearSessionPassword(webdavConfig.url, webdavConfig.username);
+        setWebdavConfig((prev) => ({ ...prev, password: '' }));
+      }
       
       // 切换到默认状态
       setStorageType('local');
